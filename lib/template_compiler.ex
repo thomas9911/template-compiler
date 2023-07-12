@@ -6,33 +6,41 @@ defmodule TemplateCompiler do
   @base_path "priv/templater"
   @release_target "target/release/"
 
+  alias TemplateCompiler.Variables
+
   if match?({:win32, _}, :os.type()) do
     @binary_extension ".exe"
   else
     @binary_extension ""
   end
 
-  @spec new(binary) :: :ok | {:error, {any, non_neg_integer}}
-  def new(path) do
-    variables = [
-      app: "my_templater_1234",
-      template_path: "hello.html",
-      message: "BIEM!",
-      struct: "MyTemplate",
-      struct_items: %{name: "String", age: "usize"}
-    ]
-
+  @spec new(binary) :: :ok | {:error, {binary, non_neg_integer}} | {:error, [File.posix()]}
+  def new(path, variables \\ Variables.default()) do
     :ok = File.mkdir_p(path)
 
     "#{@base_path}/**/*"
     |> Path.wildcard()
-    |> Enum.map(&move_files_over(&1, path, variables))
+    |> Enum.map(&move_or_generate(&1, path, Variables.to_keyword(variables)))
+    |> collect_results()
+    |> case do
+      :ok ->
+        rust_fmt(path)
 
-    rust_fmt(path)
+      e ->
+        e
+    end
   end
 
-  @spec move_files_over(binary, binary, Access.t()) :: any
-  defp move_files_over(file_path, path, variables) do
+  @spec collect_results([:ok | {:error, File.posix()}]) :: :ok | {:error, [File.posix()]}
+  defp collect_results(results) do
+    case Enum.reject(results, &(&1 == :ok)) do
+      [] -> :ok
+      errors -> {:error, Enum.map(errors, &elem(&1, 1))}
+    end
+  end
+
+  @spec move_or_generate(binary, binary, Access.t()) :: :ok | {:error, File.posix()}
+  defp move_or_generate(file_path, path, variables) do
     case String.split(file_path, ".eex") do
       [file_path_without_eex, ""] ->
         render_file(path, file_path, file_path_without_eex, variables)
@@ -46,7 +54,7 @@ defmodule TemplateCompiler do
     end
   end
 
-  @spec render_file(binary, binary, binary, Access.t()) :: any
+  @spec render_file(binary, binary, binary, Access.t()) :: :ok | {:error, File.posix()}
   defp render_file(base_path, file_path, file_path_without_eex, variables) do
     new_file = String.replace(file_path_without_eex, @base_path, base_path)
 
@@ -60,13 +68,13 @@ defmodule TemplateCompiler do
     end
   end
 
-  @spec move_file_over(binary, binary) :: any
+  @spec move_file_over(binary, binary) :: :ok | {:error, File.posix()}
   defp move_file_over(base_path, file_path) do
     new_file_destination = String.replace(file_path, @base_path, base_path)
 
     case new_file_destination |> Path.dirname() |> File.mkdir_p() do
       :ok ->
-        File.copy(file_path, new_file_destination)
+        File.cp(file_path, new_file_destination)
 
       e ->
         e
@@ -81,25 +89,41 @@ defmodule TemplateCompiler do
     end
   end
 
-  @spec compile(binary) :: nil | binary | {binary, non_neg_integer}
+  @spec compile(binary) ::
+          {:ok, binary} | {:error, {binary, non_neg_integer}} | {:error, :not_found}
   def compile(path) do
     case System.cmd("cargo", ["build", "--release"], cd: path) do
-      {"", 0} -> "#{path}/#{@release_target}/*" |> Path.wildcard() |> get_rust_binary()
+      {"", 0} -> executable_path(path)
+      e -> {:error, e}
+    end
+  end
+
+  @spec executable_path(binary) :: {:ok, binary} | {:error, :not_found}
+  def executable_path(base_path) do
+    "#{base_path}/#{@release_target}/*"
+    |> Path.wildcard()
+    |> get_rust_binary()
+  end
+
+  @spec recompile(binary) ::
+          {:ok, binary} | {:error, {binary, non_neg_integer}} | {:error, [File.posix()]}
+  def recompile(path, variables \\ Variables.default()) do
+    case new(path, variables) do
+      :ok -> compile(path)
       e -> e
     end
   end
 
-  @spec recompile(binary) :: nil | binary | {binary, non_neg_integer}
-  def recompile(path) do
-    new(path)
-    compile(path)
-  end
-
-  @spec clean_recompile(binary) :: nil | binary | {binary, non_neg_integer}
-  def clean_recompile(path) do
-    clear(path)
-    new(path)
-    compile(path)
+  @spec clean_recompile(binary, Variables.t()) ::
+          {:ok, nil | binary}
+          | {:error, [File.posix()]}
+          | {:error, {binary, non_neg_integer}}
+          | {:error, atom, binary}
+  def clean_recompile(path, variables \\ Variables.default()) do
+    case clear(path) do
+      {:ok, _} -> recompile(path, variables)
+      e -> e
+    end
   end
 
   @spec run(binary) :: {:error, binary} | {:ok, binary}
@@ -115,11 +139,11 @@ defmodule TemplateCompiler do
     File.rm_rf(path)
   end
 
-  @spec get_rust_binary([binary]) :: binary | nil
+  @spec get_rust_binary([binary]) :: {:ok, binary} | {:error, :not_found}
   defp get_rust_binary(files) do
     case Enum.find(files, nil, &(Path.extname(&1) == @binary_extension && File.regular?(&1))) do
-      nil -> nil
-      path -> Path.absname(path)
+      nil -> {:error, :not_found}
+      path -> {:ok, Path.absname(path)}
     end
   end
 end
