@@ -1,3 +1,40 @@
-fn main() {
-    println!("<%= message %>");
+use askama::Template;
+use serde::{Deserialize, Serialize};
+
+use axum::{
+    routing::{get, post},
+    http::StatusCode,
+    response::IntoResponse,
+    Router,
+};
+use axum::extract::Query;
+
+use std::net::SocketAddr;
+
+#[derive(Debug, Default)]
+#[derive(Template, Deserialize, Serialize)]
+#[template(path = "hello.html")]
+struct <%= struct %> {
+    <%= Enum.map(struct_items, fn {name, type} -> %>
+    #[serde(default)]
+    <%= name %>: <%= type %>,
+    <% end) %>
+}
+
+#[tokio::main]
+async fn main() {
+    // build our application with a route
+    let app = Router::new()
+        .route("/", get(root));
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+}
+
+
+async fn root(Query(params): Query<<%= struct %>>) -> String {
+    params.render().unwrap()
 }

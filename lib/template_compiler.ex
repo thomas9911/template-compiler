@@ -13,12 +13,20 @@ defmodule TemplateCompiler do
   end
 
   def new(path) do
-    variables = [app: "my_templater_1234", message: "124"]
+    variables = [
+      app: "my_templater_1234",
+      message: "BIEM!",
+      struct: "MyTemplate",
+      struct_items: %{name: "String", age: "usize"}
+    ]
+
     :ok = File.mkdir_p(path)
 
     "#{@base_path}/**/*"
     |> Path.wildcard()
     |> Enum.map(&move_files_over(&1, path, variables))
+
+    rust_fmt(path)
   end
 
   defp move_files_over(file_path, path, variables) do
@@ -30,8 +38,17 @@ defmodule TemplateCompiler do
       File.write(new_file, out)
     else
       if File.regular?(file_path) do
-        File.copy(file_path, String.replace(file_path, @base_path, path))
+        new_file_destination = String.replace(file_path, @base_path, path)
+        :ok = new_file_destination |> Path.dirname() |> File.mkdir_p()
+        File.copy(file_path, new_file_destination)
       end
+    end
+  end
+
+  def rust_fmt(path) do
+    case System.cmd("cargo", ["fmt"], cd: path) do
+      {"", 0} -> :ok
+      e -> {:error, e}
     end
   end
 
@@ -50,6 +67,18 @@ defmodule TemplateCompiler do
             )
         ) :: any
   def recompile(path) do
+    new(path)
+    compile(path)
+  end
+
+  @spec recompile(
+          binary
+          | maybe_improper_list(
+              binary | maybe_improper_list(any, binary | []) | char,
+              binary | []
+            )
+        ) :: any
+  def clean_recompile(path) do
     clear(path)
     new(path)
     compile(path)
@@ -67,6 +96,9 @@ defmodule TemplateCompiler do
   end
 
   defp get_rust_binary(files) do
-    Enum.find(files, nil, &(Path.extname(&1) == @binary_extension && File.regular?(&1)))
+    case Enum.find(files, nil, &(Path.extname(&1) == @binary_extension && File.regular?(&1))) do
+      nil -> nil
+      path -> Path.absname(path)
+    end
   end
 end
