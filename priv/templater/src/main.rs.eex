@@ -13,7 +13,7 @@ use std::net::SocketAddr;
 
 #[derive(Debug, Default)]
 #[derive(Template, Deserialize, Serialize)]
-#[template(path = "hello.html")]
+#[template(path = "<%= template_path %>")]
 struct <%= struct %> {
     <%= Enum.map(struct_items, fn {name, type} -> %>
     #[serde(default)]
