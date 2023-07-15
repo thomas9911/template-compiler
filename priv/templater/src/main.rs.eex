@@ -1,15 +1,28 @@
 use askama::Template;
+use axum::extract::{Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response, Result};
+use axum::routing::{get, post};
+use axum::Router;
 use serde::{Deserialize, Serialize};
-
-use axum::{
-    routing::{get, post},
-    http::StatusCode,
-    response::IntoResponse,
-    Router,
-};
-use axum::extract::Query;
-
 use std::net::SocketAddr;
+
+struct TemplateError(String);
+
+impl IntoResponse for TemplateError {
+    fn into_response(self) -> Response {
+        (StatusCode::BAD_REQUEST, self.0).into_response()
+    }
+} 
+
+#[derive(Clone)]
+struct AppState {
+    request_client: reqwest::Client
+}
+
+fn serde_json_null() -> serde_json::Value {
+    serde_json::Value::Null
+}
 
 #[derive(Debug, Default)]
 #[derive(Template, Deserialize, Serialize)]
@@ -19,13 +32,22 @@ struct <%= struct %> {
     #[serde(default)]
     <%= name %>: <%= type %>,
     <% end) %>
+    #[serde(default = "serde_json_null")]
+    data: serde_json::Value
+}
+
+mod filters {
+    pub fn json_array_sort_by_key(array: &&Vec<serde_json::Value>, key: &str) -> ::askama::Result<Vec<serde_json::Value>> {
+        let mut sorted_array = array.to_vec();
+        sorted_array.sort_by_cached_key(|k| k[&key].to_string());
+        Ok(sorted_array)
+    }
 }
 
 #[tokio::main]
 async fn main() {
     // build our application with a route
-    let app = Router::new()
-        .route("/", get(root));
+    let app = Router::new().route("/", get(root)).with_state(AppState { request_client: reqwest::Client::new() });
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     axum::Server::bind(&addr)
@@ -34,7 +56,22 @@ async fn main() {
         .unwrap();
 }
 
-
-async fn root(Query(params): Query<<%= struct %>>) -> String {
-    params.render().unwrap()
+async fn root(Query(mut params): Query<<%= struct %>>, State(app_state): State<AppState>) -> Result<Response> {
+    let data = app_state
+        .request_client
+        <%= case data_url do
+           {:get, url}  ->
+                ".get(\"#{url}\")"
+            {:post, url}  ->
+                ".post(\"#{url}\")"
+        end %>
+        .send()
+        .await
+        .map_err(|e| TemplateError(e.to_string()))?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| TemplateError(e.to_string()))?;
+    params.data = data;
+    // Ok(params.render().map_err(|e| TemplateError(e.to_string()))?)
+    Ok(params.into_response())
 }
