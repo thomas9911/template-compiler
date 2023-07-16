@@ -24,6 +24,11 @@ defmodule TemplateCompiler.Variables do
     %__MODULE__{}
   end
 
+  @spec new(Enumerable.t()) :: t()
+  def new(attr) do
+    struct(default(), attr) |> IO.inspect()
+  end
+
   @spec to_keyword(t()) :: keyword()
   def to_keyword(variables) do
     variables

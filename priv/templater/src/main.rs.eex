@@ -5,7 +5,8 @@ use axum::response::{IntoResponse, Response, Result};
 use axum::routing::{get, post};
 use axum::Router;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use tracing::info;
+use tracing_subscriber;
 
 struct TemplateError(String);
 
@@ -46,10 +47,15 @@ mod filters {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
+
     // build our application with a route
     let app = Router::new().route("/", get(root)).with_state(AppState { request_client: reqwest::Client::new() });
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = std::env::var("SERVER_ADDRESS").unwrap_or(String::from("127.0.0.1:3000")).parse().unwrap();
+
+    info!("starting on: {addr}");
+
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await

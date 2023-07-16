@@ -1,0 +1,23 @@
+version: "3.8"
+services:
+  traefik:
+    image: "traefik:v2.9"
+    container_name: "traefik"
+    depends_on:
+      - traefik-config-server
+    command:
+      - "--providers.http=true"
+      # - "--providers.http.endpoint=http://127.0.0.1:4567"
+      - "--providers.http.endpoint=http://traefik-config-server:4567"
+      - "--entrypoints.web.address=:80"
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+  traefik-config-server:
+    build:
+      context: .
+    ports:
+      - "4567:4567"

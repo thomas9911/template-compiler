@@ -8,8 +8,8 @@ defmodule TemplateCompiler.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: TemplateCompiler.Worker.start_link(arg)
-      # {TemplateCompiler.Worker, arg}
+      TemplateCompiler.Index,
+      {Task.Supervisor, name: TemplateCompiler.TaskSupervisor}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
