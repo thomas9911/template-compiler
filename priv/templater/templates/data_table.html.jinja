@@ -1,22 +1,31 @@
+<head>
+<script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta17/dist/js/tabler.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta17/dist/css/tabler.min.css">
+
+</head>
+<body>
+
 <p>
 Hallo mates, {{ name }}
 </p>
 
-<div>
+<div class="table">
 {% match data %}
   {% when serde_json::Value::Array with (list) %}
     {% let sorted_list = list|json_array_sort_by_key(sort) %}
 
-    <table>
+    <table class="table table-vcenter">
       {% for item in sorted_list %}
         {% match item %}
           {% when serde_json::Value::Object with (record) %}
             {% if loop.first %}
-              <tr>
-                {% for key in record.keys() %}
-                  <th>{{key}}</th>
-                {% endfor %}
-              </tr>
+              <thead class="sticky-top">
+                <tr>
+                  {% for key in record.keys() %}
+                    <th>{{key}}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
             {% endif %}
             <tr>
             {% for item in record.values() %}
@@ -30,3 +39,4 @@ Hallo mates, {{ name }}
   {% else %}
 {% endmatch %}
 </div>
+</body>
